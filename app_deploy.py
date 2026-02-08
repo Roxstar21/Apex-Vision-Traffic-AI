@@ -2,24 +2,26 @@ import streamlit as st
 from PIL import Image
 import numpy as np
 import os
-
-# --- CRITICAL COMPATIBILITY FIX ---
-# We force the use of the Legacy Keras engine to match your old model file
-os.environ["TF_USE_LEGACY_KERAS"] = "1"
-import tf_keras as keras
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 
 st.set_page_config(page_title="Apex Vision Live", page_icon="👁️", layout="wide")
 
-# Force CSS for Dark Mode
-st.markdown("""<style>.stApp { background-color: #0e1117; } .result-card { background-color: #1c2029; padding: 20px; border-left: 5px solid #00e676; border-radius: 5px; margin-top: 20px; }</style>""", unsafe_allow_html=True)
+# Styling
+st.markdown("""
+<style>
+    .stApp { background-color: #0e1117; } 
+    .result-card { background-color: #1c2029; padding: 20px; border-left: 5px solid #00e676; border-radius: 5px; margin-top: 20px; }
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_resource
 def load_traffic_brain():
     paths = ["traffic_classifier.h5", "backend/traffic_classifier.h5"]
     for p in paths:
         if os.path.exists(p):
-            # Use the LEGACY loader
-            return keras.models.load_model(p)
+            # Compile=False prevents optimizer errors on load
+            return load_model(p, compile=False)
     return None
 
 model = load_traffic_brain()
