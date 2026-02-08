@@ -1,111 +1,80 @@
 import streamlit as st
+from PIL import Image
 import numpy as np
-import pandas as pd
-import yfinance as yf
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import load_model
-import plotly.graph_objects as go
-import datetime
 import os
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="QuantumTrend Pro", page_icon="🦅", layout="wide")
+# --- CRITICAL COMPATIBILITY FIX ---
+# We force the use of the Legacy Keras engine to match your old model file
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+import tf_keras as keras
 
-# --- CSS ---
-st.markdown("""<style>.stApp { background-color: #0e1117; } .prediction-card { background-color: #1c2029; padding: 20px; border-radius: 10px; border-left: 5px solid; margin-bottom: 20px; }</style>""", unsafe_allow_html=True)
+st.set_page_config(page_title="Apex Vision Live", page_icon="👁️", layout="wide")
 
-# --- LOAD BRAIN ---
+# Force CSS for Dark Mode
+st.markdown("""<style>.stApp { background-color: #0e1117; } .result-card { background-color: #1c2029; padding: 20px; border-left: 5px solid #00e676; border-radius: 5px; margin-top: 20px; }</style>""", unsafe_allow_html=True)
+
 @st.cache_resource
-def load_brain():
-    paths = ["stock_predictor.h5", "backend/stock_predictor.h5"]
+def load_traffic_brain():
+    paths = ["traffic_classifier.h5", "backend/traffic_classifier.h5"]
     for p in paths:
-        if os.path.exists(p): return load_model(p)
+        if os.path.exists(p):
+            # Use the LEGACY loader
+            return keras.models.load_model(p)
     return None
 
-try:
-    model = load_brain()
-except:
-    model = None
+model = load_traffic_brain()
 
-def calculate_rsi(data, window=14):
-    delta = data['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+classes = { 
+    0:'Speed limit (20km/h)', 1:'Speed limit (30km/h)', 2:'Speed limit (50km/h)', 
+    3:'Speed limit (60km/h)', 4:'Speed limit (70km/h)', 5:'Speed limit (80km/h)', 
+    6:'End of speed limit (80km/h)', 7:'Speed limit (100km/h)', 8:'Speed limit (120km/h)', 
+    9:'No passing', 10:'No passing veh over 3.5 tons', 11:'Right-of-way at intersection', 
+    12:'Priority road', 13:'Yield', 14:'Stop', 15:'No vehicles', 
+    16:'Veh > 3.5 tons prohibited', 17:'No entry', 18:'General caution', 
+    19:'Dangerous curve left', 20:'Dangerous curve right', 21:'Double curve', 
+    22:'Bumpy road', 23:'Slippery road', 24:'Road narrows on the right', 
+    25:'Road work', 26:'Traffic signals', 27:'Pedestrians', 28:'Children crossing', 
+    29:'Bicycles crossing', 30:'Beware of ice/snow', 31:'Wild animals crossing', 
+    32:'End speed + passing limits', 33:'Turn right ahead', 34:'Turn left ahead', 
+    35:'Ahead only', 36:'Go straight or right', 37:'Go straight or left', 
+    38:'Keep right', 39:'Keep left', 40:'Roundabout mandatory', 
+    41:'End of no passing', 42:'End no passing veh > 3.5 tons' 
+}
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.title("QUANTUM DESK")
-    ticker = st.text_input("Ticker Symbol", value="AAPL").upper()
-    run_btn = st.button("INITIATE ALGORITHM", type="primary")
+def process_image(img):
+    img = img.convert('RGB')
+    img = img.resize((30, 30))
+    img = np.array(img)
+    img = img / 255.0
+    img = np.expand_dims(img, axis=0)
+    return img
 
-# --- MAIN ---
-st.title(f"💹 Market Intelligence // {ticker}")
+st.title("👁️ APEX VISION // AUTONOMOUS NODE")
 
-if run_btn:
-    if model is None:
-        st.error("⚠️ AI Model not found. Check GitHub.")
-    else:
-        with st.spinner(f"📡 DOWNLOADING LIVE DATA FOR {ticker}..."):
+c1, c2 = st.columns([1, 1])
+
+with c1:
+    uploaded_file = st.file_uploader("Upload Dashcam Feed", type=["png", "jpg", "jpeg"])
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Sensor Input", width=300)
+
+with c2:
+    if uploaded_file and model is not None:
+        if st.button("EXECUTE NEURAL SCAN", type="primary"):
             try:
-                end = datetime.datetime.now()
-                start = end - datetime.timedelta(days=730)
-                data = yf.download(ticker, start=start, end=end, progress=False)
+                processed = process_image(image)
+                pred = model.predict(processed)
+                class_id = np.argmax(pred)
+                confidence = float(np.max(pred)) * 100
                 
-                # FIX: Handle MultiIndex
-                if isinstance(data.columns, pd.MultiIndex):
-                    data.columns = data.columns.get_level_values(0)
+                label = classes.get(class_id, "Unknown Sign")
+                
+                status_color = "#ff2b2b" if class_id in [14, 17] else "#00e676"
+                msg = "🚨 CRITICAL ALERT" if class_id in [14, 17] else "✅ SAFE"
 
-                if len(data) < 60:
-                    st.error("Not enough data history.")
-                else:
-                    # AI PREDICTION
-                    scaler = MinMaxScaler(feature_range=(0,1))
-                    scaled_data = scaler.fit_transform(data[['Close']].values)
-                    
-                    x_input = scaled_data[-60:].reshape(1, 60, 1)
-                    prediction = model.predict(x_input)
-                    price = float(scaler.inverse_transform(prediction)[0][0])
-                    
-                    # TECHNICALS
-                    data['SMA_50'] = data['Close'].rolling(window=50).mean()
-                    data['RSI'] = calculate_rsi(data)
-                    data = data.fillna(0)
-                    
-                    # --- THE ULTIMATE FIX ---
-                    # Use .item() to extract the raw number from the Series
-                    current_price = data['Close'].iloc[-1].item()
-                    change_percent = ((price - current_price) / current_price) * 100
-                    volume_val = data['Volume'].iloc[-1].item()
-                    
-                    # Logic Check (Now using raw floats)
-                    if change_percent > 0:
-                        trend_color = "#00ff00"
-                        trend_msg = "🚀 BULLISH SIGNAL"
-                    else:
-                        trend_color = "#ff2b2b"
-                        trend_msg = "🔻 BEARISH SIGNAL"
-
-                    # DISPLAY
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("ASSET PRICE", f"${current_price:,.2f}")
-                    c2.metric("AI TARGET", f"${price:,.2f}")
-                    c3.metric("FORECAST", f"{change_percent:+.2f}%")
-                    c4.metric("24H VOLUME", f"{int(volume_val):,}")
-                    
-                    st.markdown(f"""<div class="prediction-card" style="border-color: {trend_color};"><h3 style="color: {trend_color}; margin:0;">{trend_msg}</h3><p style="color: #ccc; margin-top: 5px;">Target: <b>${price:.2f}</b></p></div>""", unsafe_allow_html=True)
-
-                    tab1, tab2 = st.tabs(["PRICE", "RSI"])
-                    with tab1:
-                        fig = go.Figure()
-                        fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name='Market'))
-                        fig.add_trace(go.Scatter(x=data.index, y=data['SMA_50'], mode='lines', name='SMA', line=dict(color='#ff00ff', width=1)))
-                        fig.add_trace(go.Scatter(x=[data.index[-1], "Forecast"], y=[current_price, price], mode='lines+markers', line=dict(color='yellow', dash='dot')))
-                        fig.update_layout(height=500, xaxis_rangeslider_visible=False, template="plotly_dark")
-                        st.plotly_chart(fig, use_container_width=True)
-                    with tab2:
-                        st.line_chart(data['RSI'])
-
+                st.markdown(f"""<div class="result-card" style="border-left-color: {status_color};"><h2 style="color: {status_color}; margin:0;">{msg}</h2><h1>{label.upper()}</h1></div>""", unsafe_allow_html=True)
+                st.metric("CONFIDENCE", f"{confidence:.2f}%")
+                
             except Exception as e:
-                st.error(f"Analysis Failed: {e}")
+                st.error(f"Inference Error: {e}")
