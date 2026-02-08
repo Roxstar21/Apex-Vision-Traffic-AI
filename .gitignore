@@ -1,0 +1,19 @@
+# Ignore Dataset
+backend/GTSRB/
+backend/traffic_data.zip
+*.zip
+
+# Ignore Python Cache
+__pycache__/
+*.pyc
+
+# Ignore Virtual Env (if any)
+venv/
+env/
+.env
+
+# Ignore large model files (Optional, but recommended if >100MB)
+# backend/traffic_classifier.h5
+
+# Ignore IDE settings
+.vscode/
