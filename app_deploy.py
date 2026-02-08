@@ -20,7 +20,7 @@ def load_traffic_brain():
     for p in paths:
         if os.path.exists(p):
             try:
-                # Try standard load
+                # Compile=False prevents optimizer errors on load
                 return load_model(p, compile=False)
             except Exception as e:
                 st.error(f"Model Load Failed: {e}")
@@ -48,7 +48,8 @@ classes = {
 
 def process_image(img):
     img = img.convert('RGB')
-    img = img.resize((30, 30))
+    # --- FIX: CHANGED FROM 30x30 TO 60x60 ---
+    img = img.resize((60, 60))
     img = np.array(img)
     img = img / 255.0
     img = np.expand_dims(img, axis=0)
