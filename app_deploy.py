@@ -7,7 +7,6 @@ from tensorflow.keras.models import load_model
 
 st.set_page_config(page_title="Apex Vision Live", page_icon="👁️", layout="wide")
 
-# Styling
 st.markdown("""
 <style>
     .stApp { background-color: #0e1117; } 
@@ -20,8 +19,12 @@ def load_traffic_brain():
     paths = ["traffic_classifier.h5", "backend/traffic_classifier.h5"]
     for p in paths:
         if os.path.exists(p):
-            # Compile=False prevents optimizer errors on load
-            return load_model(p, compile=False)
+            try:
+                # Try standard load
+                return load_model(p, compile=False)
+            except Exception as e:
+                st.error(f"Model Load Failed: {e}")
+                return None
     return None
 
 model = load_traffic_brain()
